@@ -1,0 +1,11 @@
+{
+  "name": "smartship-backend",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "mqtt": "^5.0.0"
+  }
+}
