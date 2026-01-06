@@ -1,10 +1,13 @@
 import mqtt from "mqtt";
 import "dotenv/config";
+const IMAGE_BASE_URL =
+  "https://pub-cc75337d33a94efcae6e9d7fddbfaf8a.r2.dev/latest.jpg";
+
 // STATE CHIA SẺ CHO FRONTEND
 let latestStatus = {
   weight: 0,
   detected: false,
-  imageUrl: "https://pub-cc75337d33a94efcae6e9d7fddbfaf8a.r2.dev/latest.jpg",
+  imageUrl: IMAGE_BASE_URL,
 };
 
 const brokerUrl = process.env.MQTT_BROKER;
@@ -62,6 +65,8 @@ function handleObjectDetection(message) {
       console.log("Object detected.");
       isGoodDetected = true;
       latestStatus.detected = true;
+
+      latestStatus.imageUrl = `${IMAGE_BASE_URL}?t=${Date.now()}`;
     } else {
       console.log("Object left sensor. Making decision.");
 
