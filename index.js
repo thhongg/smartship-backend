@@ -22,7 +22,6 @@ let isGoodDetected = false;
 
 const TOPIC_OBJECT_DETECTION = "v1/delivery/sensor/ultrasonic";
 const TOPIC_COMMAND_STATUS = "v1/delivery/command/status";
-const TOPIC_AUDIO_PLAY = "v1/delivery/audio/play";
 const TOPIC_DISPLAY_LCD = "v1/delivery/display/lcd";
 const TOPIC_WEIGHT = "v1/delivery/sensor/weight";
 
@@ -83,12 +82,6 @@ function handleObjectDetection(message) {
           });
 
           client.publish(
-            TOPIC_AUDIO_PLAY,
-            JSON.stringify({ track_id: isGoodAccepted ? 1 : 2 }),
-            { qos: 1 }
-          );
-
-          client.publish(
             TOPIC_DISPLAY_LCD,
             JSON.stringify({
               line1: action === "ACCEPT" ? "Accepted" : "Rejected",
@@ -140,8 +133,24 @@ app.get("/status", (req, res) => {
 });
 
 app.post("/decision", (req, res) => {
-  const { decision } = req.body;
-  console.log("Decision from frontend:", decision);
+  const { decision } = req.body; // "ACCEPT" | "REJECT"
+
+  // 1. GỬI COMMAND → ESP32 sẽ play audio tương ứng
+  client.publish(TOPIC_COMMAND_STATUS, JSON.stringify({ action: decision }), {
+    qos: 1,
+  });
+
+  // 2. GỬI LCD
+  client.publish(
+    TOPIC_DISPLAY_LCD,
+    JSON.stringify({
+      line1: decision === "ACCEPT" ? "Accepted" : "Rejected",
+      line2: decision === "REJECT" ? "Prohibited" : "",
+    }),
+    { qos: 1 }
+  );
+
+  console.log("Manual decision sent to ESP32:", decision);
   res.json({ ok: true });
 });
 
