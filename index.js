@@ -21,7 +21,6 @@ const client = mqtt.connect(brokerUrl, options);
 let isGoodDetected = false;
 
 const TOPIC_OBJECT_DETECTION = "v1/delivery/sensor/ultrasonic";
-const TOPIC_IMAGE_UPLOAD = "v1/delivery/camera/image";
 const TOPIC_COMMAND_STATUS = "v1/delivery/command/status";
 const TOPIC_AUDIO_PLAY = "v1/delivery/audio/play";
 const TOPIC_DISPLAY_LCD = "v1/delivery/display/lcd";
@@ -31,7 +30,6 @@ client.on("connect", () => {
   console.log("Connected to MQTT broker");
   // Subscribe to relevant topics from ESP32
   client.subscribe(TOPIC_OBJECT_DETECTION, { qos: 1 });
-  client.subscribe(TOPIC_IMAGE_UPLOAD, { qos: 1 });
   client.subscribe(TOPIC_WEIGHT, { qos: 1 });
 });
 
@@ -44,9 +42,6 @@ client.on("message", (topic, message) => {
     case TOPIC_OBJECT_DETECTION:
       handleObjectDetection(message);
       break;
-    case TOPIC_IMAGE_UPLOAD:
-      handleImageUpload(message);
-      break;
     case TOPIC_WEIGHT:
       handleWeight(message);
       break;
@@ -58,61 +53,59 @@ client.on("message", (topic, message) => {
 function handleObjectDetection(message) {
   try {
     const payload = JSON.parse(message.toString());
-    if (payload.detected) {
-      console.log("Object detected. Waiting for image...");
-      isGoodDetected = true;
 
-      // ✅ UPDATE CHO FRONTEND
+    if (typeof payload.detected !== "boolean") {
+      console.warn("Invalid detected payload:", payload);
+      return;
+    }
+
+    if (payload.detected) {
+      console.log("Object detected.");
+      isGoodDetected = true;
       latestStatus.detected = true;
+    } else {
+      console.log("Object left sensor. Making decision.");
+
+      if (isGoodDetected) {
+        if (
+          typeof latestStatus.weight !== "number" ||
+          latestStatus.weight <= 0
+        ) {
+          console.warn("No valid weight yet. Skipping decision.");
+        } else {
+          const isGoodAccepted =
+            typeof latestStatus.weight === "number" && latestStatus.weight > 0;
+
+          const action = isGoodAccepted ? "ACCEPT" : "REJECT";
+
+          client.publish(TOPIC_COMMAND_STATUS, JSON.stringify({ action }), {
+            qos: 1,
+          });
+
+          client.publish(
+            TOPIC_AUDIO_PLAY,
+            JSON.stringify({ track_id: isGoodAccepted ? 1 : 2 }),
+            { qos: 1 }
+          );
+
+          client.publish(
+            TOPIC_DISPLAY_LCD,
+            JSON.stringify({
+              line1: action === "ACCEPT" ? "Accepted" : "Rejected",
+              line2: "",
+            }),
+            { qos: 1 }
+          );
+        }
+      }
+      // reset state
+      isGoodDetected = false;
+      latestStatus.detected = false;
+      latestStatus.updatedAt = Date.now();
     }
   } catch (e) {
     console.error("Failed to parse object detection message:", e);
   }
-}
-
-function handleImageUpload(message) {
-  if (!isGoodDetected) {
-    console.log("Image received without prior good detection. Ignoring.");
-    return;
-  }
-
-  console.log("Image received.");
-
-  // Step 1: Image is received. Simulate image analysis.
-  const isGoodAccepted = 1; // 50% chance of acceptance
-
-  if (isGoodAccepted) {
-    console.log("Image analysis: Good accepted.");
-    // Step 2: Publish commands for ACCEPT
-    client.publish(TOPIC_COMMAND_STATUS, JSON.stringify({ action: "ACCEPT" }), {
-      qos: 1,
-    });
-    client.publish(TOPIC_AUDIO_PLAY, JSON.stringify({ track_id: 1 }), {
-      qos: 1,
-    });
-    client.publish(
-      TOPIC_DISPLAY_LCD,
-      JSON.stringify({ line1: "Accepted", line2: "" }),
-      { qos: 1 }
-    );
-  } else {
-    console.log("Image analysis: Good rejected.");
-    // Step 2: Publish commands for REJECT
-    client.publish(TOPIC_COMMAND_STATUS, JSON.stringify({ action: "REJECT" }), {
-      qos: 1,
-    });
-    client.publish(TOPIC_AUDIO_PLAY, JSON.stringify({ track_id: 2 }), {
-      qos: 1,
-    }); // Assuming track 2 is for rejection
-    client.publish(
-      TOPIC_DISPLAY_LCD,
-      JSON.stringify({ line1: "Rejected", line2: "Prohibited" }),
-      { qos: 1 }
-    );
-  }
-
-  // Reset the detection flag to wait for the next cycle
-  isGoodDetected = false;
 }
 
 function handleWeight(message) {
@@ -129,22 +122,10 @@ function handleWeight(message) {
   } catch (e) {
     console.error("Failed to parse weight message:", e);
   }
+  latestStatus.updatedAt = Date.now();
 }
 
 export default client;
-function publishCommand(action) {
-  client.publish(TOPIC_COMMAND_STATUS, JSON.stringify({ action }), { qos: 1 });
-}
-
-function playAudio(track_id) {
-  client.publish(TOPIC_AUDIO_PLAY, JSON.stringify({ track_id }), { qos: 1 });
-}
-
-function displayLCD(line1, line2 = "") {
-  client.publish(TOPIC_DISPLAY_LCD, JSON.stringify({ line1, line2 }), {
-    qos: 1,
-  });
-}
 
 import express from "express";
 import cors from "cors";
