@@ -1,5 +1,11 @@
 import mqtt from "mqtt";
 import "dotenv/config";
+// STATE CHIA SẺ CHO FRONTEND
+let latestStatus = {
+  weight: 0,
+  detected: false,
+  imageUrl: "https://pub-cc75337d33a94efcae6e9d7fddbfaf8a.r2.dev/latest.jpg",
+};
 
 const brokerUrl = process.env.MQTT_BROKER;
 
@@ -55,6 +61,9 @@ function handleObjectDetection(message) {
     if (payload.detected) {
       console.log("Object detected. Waiting for image...");
       isGoodDetected = true;
+
+      // ✅ UPDATE CHO FRONTEND
+      latestStatus.detected = true;
     }
   } catch (e) {
     console.error("Failed to parse object detection message:", e);
@@ -110,13 +119,12 @@ function handleWeight(message) {
   try {
     const payload = JSON.parse(message.toString());
     const weight = payload.weight;
+
     if (typeof weight === "number") {
       console.log(`Received weight: ${weight} kg`);
-    } else {
-      console.warn(
-        'Received weight message but "weight" field is not a number:',
-        payload
-      );
+
+      // ✅ UPDATE CHO FRONTEND
+      latestStatus.weight = weight;
     }
   } catch (e) {
     console.error("Failed to parse weight message:", e);
@@ -137,3 +145,27 @@ function displayLCD(line1, line2 = "") {
     qos: 1,
   });
 }
+
+import express from "express";
+import cors from "cors";
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// ====== HTTP API CHO FRONTEND ======
+app.get("/status", (req, res) => {
+  res.json(latestStatus);
+});
+
+app.post("/decision", (req, res) => {
+  const { decision } = req.body;
+  console.log("Decision from frontend:", decision);
+  res.json({ ok: true });
+});
+
+// ====== LISTEN PORT (QUAN TRỌNG) ======
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+  console.log("HTTP server listening on port", PORT);
+});
