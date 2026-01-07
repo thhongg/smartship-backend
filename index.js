@@ -145,7 +145,8 @@ async function removeBackground(imageBuffer) {
     "input.jpg"
   );
   form.append("size", "auto");
-
+  form.append("format", "jpg"); // ép output thành JPG
+  form.append("bg_color", "ffffff"); // nền trắng
   const res = await fetch("https://api.remove.bg/v1.0/removebg", {
     method: "POST",
     headers: {
@@ -159,7 +160,7 @@ async function removeBackground(imageBuffer) {
     throw new Error("remove.bg failed: " + text);
   }
 
-  return await res.arrayBuffer(); // PNG nền trong suốt
+  return await res.arrayBuffer(); // jPEG nền trắng
 }
 
 async function runAIInference() {
@@ -190,8 +191,8 @@ async function runAIInference() {
     form.append("iou", "0.45");
     form.append(
       "file",
-      new Blob([bgRemovedBuffer], { type: "image/png" }),
-      "latest_nobg.png"
+      new Blob([bgRemovedBuffer], { type: "image/jpeg" }),
+      "latest_nobg.jpg"
     );
 
     const res = await fetch("https://predict.ultralytics.com", {
