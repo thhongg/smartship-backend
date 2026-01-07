@@ -137,6 +137,30 @@ function handleWeight(message) {
   }
   latestStatus.updatedAt = Date.now();
 }
+async function removeBackground(imageBuffer) {
+  const form = new FormData();
+  form.append(
+    "image_file",
+    new Blob([imageBuffer], { type: "image/jpeg" }),
+    "input.jpg"
+  );
+  form.append("size", "auto");
+
+  const res = await fetch("https://api.remove.bg/v1.0/removebg", {
+    method: "POST",
+    headers: {
+      "X-Api-Key": process.env.REMOVEBG_API_KEY,
+    },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error("remove.bg failed: " + text);
+  }
+
+  return await res.arrayBuffer(); // PNG nền trong suốt
+}
 
 async function runAIInference() {
   try {
@@ -152,20 +176,22 @@ async function runAIInference() {
       throw new Error("Failed to fetch image from R2");
     }
 
-    const imgBuffer = await imgRes.arrayBuffer();
+    const originalBuffer = await imgRes.arrayBuffer();
 
+    //XÓA NỀN
+    const bgRemovedBuffer = await removeBackground(originalBuffer);
     const form = new FormData();
     form.append(
       "model",
       "https://hub.ultralytics.com/models/kxpiyKC1moNO87JkbXlr"
     );
     form.append("imgsz", "640");
-    form.append("conf", "0.25");
+    form.append("conf", "0.15");
     form.append("iou", "0.45");
     form.append(
       "file",
-      new Blob([imgBuffer], { type: "image/jpeg" }),
-      "latest.jpg"
+      new Blob([bgRemovedBuffer], { type: "image/png" }),
+      "latest_nobg.png"
     );
 
     const res = await fetch("https://predict.ultralytics.com", {
