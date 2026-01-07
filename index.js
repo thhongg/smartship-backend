@@ -1,6 +1,5 @@
 import mqtt from "mqtt";
 import "dotenv/config";
-import FormData from "form-data";
 
 const IMAGE_BASE_URL =
   "https://pub-cc75337d33a94efcae6e9d7fddbfaf8a.r2.dev/latest.jpg";
@@ -145,9 +144,9 @@ async function runAIInference() {
 
     // 1. Fetch ảnh latest.jpg từ R2
     const imgRes = await fetch(IMAGE_BASE_URL);
-    const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+    const imgBuffer = await imgRes.arrayBuffer();
 
-    // 2. Build form data
+    // 2. Build FormData (BUILT-IN)
     const form = new FormData();
     form.append(
       "model",
@@ -156,24 +155,28 @@ async function runAIInference() {
     form.append("imgsz", "640");
     form.append("conf", "0.25");
     form.append("iou", "0.45");
-    form.append("file", imgBuffer, "latest.jpg");
+    form.append(
+      "file",
+      new Blob([imgBuffer], { type: "image/jpeg" }),
+      "latest.jpg"
+    );
 
     // 3. Call Ultralytics API
     const res = await fetch("https://predict.ultralytics.com", {
       method: "POST",
       headers: {
         "x-api-key": process.env.ULTRALYTICS_API_KEY,
-        ...form.getHeaders(),
+        // ❌ KHÔNG set Content-Type
       },
       body: form,
     });
 
-    const result = await res.json();
     if (!res.ok) {
       throw new Error(`AI API failed: ${res.status}`);
     }
 
-    // 4. Lưu kết quả
+    const result = await res.json();
+
     aiConfig.lastResult = result;
     latestStatus.aiResult = result;
 
