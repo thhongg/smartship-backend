@@ -2,7 +2,7 @@ import mqtt from "mqtt";
 import "dotenv/config";
 
 const IMAGE_BASE_URL =
-  "https://pub-cc75337d33a94efcae6e9d7fddbfaf8a.r2.dev/test.jpg";
+  "https://pub-cc75337d33a94efcae6e9d7fddbfaf8a.r2.dev/latest.jpg";
 
 // STATE CHIA SẺ CHO FRONTEND
 let latestStatus = {
