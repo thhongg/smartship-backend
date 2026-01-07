@@ -217,8 +217,11 @@ app.get("/status", (req, res) => {
 app.post("/config/ai", (req, res) => {
   const { enabled } = req.body;
   aiConfig.enabled = !!enabled;
-
-  if (aiConfig.enabled && latestStatus.detected && !aiInferenceRunning) {
+  if (!aiConfig.enabled) {
+    aiConfig.lastResult = null;
+    latestStatus.aiResult = null;
+  }
+  if (aiConfig.enabled && !aiInferenceRunning) {
     aiInferenceRunning = true;
     runAIInference().finally(() => {
       aiInferenceRunning = false;
