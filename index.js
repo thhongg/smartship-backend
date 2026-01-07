@@ -1,6 +1,5 @@
 import mqtt from "mqtt";
 import "dotenv/config";
-import fetch from "node-fetch";
 import FormData from "form-data";
 
 const IMAGE_BASE_URL =
