@@ -113,8 +113,6 @@ function handleObjectDetection(message) {
       isGoodDetected = false;
       latestStatus.detected = false;
       latestStatus.updatedAt = Date.now();
-      aiConfig.lastResult = null;
-      latestStatus.aiResult = null;
     }
   } catch (e) {
     console.error("Failed to parse object detection message:", e);
@@ -176,6 +174,7 @@ async function runAIInference() {
     }
 
     const result = await res.json();
+    console.log("AI RESULT:", JSON.stringify(result, null, 2));
 
     aiConfig.lastResult = result;
     latestStatus.aiResult = result;
