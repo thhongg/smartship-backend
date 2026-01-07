@@ -4,6 +4,20 @@ import "dotenv/config";
 const IMAGE_BASE_URL =
   "https://pub-cc75337d33a94efcae6e9d7fddbfaf8a.r2.dev/latest.jpg";
 
+const WORKER_BASE_URL = "https://tiny-snow-d7fd.thachchithong3.workers.dev";
+
+async function saveTransaction({ decision, weight }) {
+  try {
+    await fetch(`${WORKER_BASE_URL}/transactions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, weight }),
+    });
+  } catch (err) {
+    console.error("Failed to save transaction:", err);
+  }
+}
+
 // STATE CHIA SẺ CHO FRONTEND
 let latestStatus = {
   weight: 0,
@@ -60,7 +74,7 @@ client.on("message", (topic, message) => {
   }
 });
 
-function handleObjectDetection(message) {
+async function handleObjectDetection(message) {
   try {
     const payload = JSON.parse(message.toString());
 
@@ -99,6 +113,10 @@ function handleObjectDetection(message) {
 
           client.publish(TOPIC_COMMAND_STATUS, JSON.stringify({ action }), {
             qos: 1,
+          });
+          await saveTransaction({
+            decision: action,
+            weight: latestStatus.weight,
           });
 
           client.publish(
@@ -213,7 +231,7 @@ async function runAIInference() {
     const detections = result?.images?.[0]?.results || [];
     console.log("Detections:", detections);
 
-    // ✅ LƯU STATE CHO FRONTEND
+    // LƯU STATE CHO FRONTEND
     aiConfig.lastResult = result;
     latestStatus.aiResult = result;
     latestStatus.updatedAt = Date.now();
@@ -258,7 +276,7 @@ app.post("/config/ai", (req, res) => {
   res.json({ ok: true, aiEnabled: aiConfig.enabled });
 });
 
-app.post("/decision", (req, res) => {
+app.post("/decision", async (req, res) => {
   const { decision } = req.body; // "ACCEPT" | "REJECT"
 
   // 1. GỬI COMMAND → ESP32 sẽ play audio tương ứng
@@ -275,7 +293,10 @@ app.post("/decision", (req, res) => {
     }),
     { qos: 1 }
   );
-
+  await saveTransaction({
+    decision,
+    weight: latestStatus.weight,
+  });
   console.log("Manual decision sent to ESP32:", decision);
   res.json({ ok: true });
 });
