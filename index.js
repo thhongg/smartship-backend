@@ -9,7 +9,9 @@ let latestStatus = {
   weight: 0,
   detected: false,
   imageUrl: IMAGE_BASE_URL,
+  aiResult: null,
 };
+
 let aiConfig = {
   enabled: false,
   lastResult: null,
@@ -138,13 +140,20 @@ function handleWeight(message) {
 
 async function runAIInference() {
   try {
-    console.log("Running AI inference...");
+    console.log("Running AI inference on:", latestStatus.imageUrl);
 
-    // 1. Fetch ảnh latest.jpg từ R2
-    const imgRes = await fetch(IMAGE_BASE_URL);
+    // Chờ ảnh chắc chắn tồn tại trên R2
+    await new Promise((r) => setTimeout(r, 300));
+
+    const imgRes = await fetch(latestStatus.imageUrl, {
+      cache: "no-store",
+    });
+    if (!imgRes.ok) {
+      throw new Error("Failed to fetch image from R2");
+    }
+
     const imgBuffer = await imgRes.arrayBuffer();
 
-    // 2. Build FormData (BUILT-IN)
     const form = new FormData();
     form.append(
       "model",
@@ -159,25 +168,28 @@ async function runAIInference() {
       "latest.jpg"
     );
 
-    // 3. Call Ultralytics API
     const res = await fetch("https://predict.ultralytics.com", {
       method: "POST",
       headers: {
         "x-api-key": process.env.ULTRALYTICS_API_KEY,
-        // ❌ KHÔNG set Content-Type
       },
       body: form,
     });
 
     if (!res.ok) {
-      throw new Error(`AI API failed: ${res.status}`);
+      const text = await res.text();
+      throw new Error(`AI API failed: ${res.status} ${text}`);
     }
 
     const result = await res.json();
-    console.log("AI RESULT:", JSON.stringify(result, null, 2));
 
+    const detections = result?.images?.[0]?.results || [];
+    console.log("Detections:", detections);
+
+    // ✅ LƯU STATE CHO FRONTEND
     aiConfig.lastResult = result;
     latestStatus.aiResult = result;
+    latestStatus.updatedAt = Date.now();
 
     console.log("AI inference completed");
   } catch (err) {
@@ -204,10 +216,14 @@ app.get("/status", (req, res) => {
 
 app.post("/config/ai", (req, res) => {
   const { enabled } = req.body;
-
   aiConfig.enabled = !!enabled;
 
-  console.log("AI mode:", aiConfig.enabled ? "ENABLED" : "DISABLED");
+  if (aiConfig.enabled && latestStatus.detected && !aiInferenceRunning) {
+    aiInferenceRunning = true;
+    runAIInference().finally(() => {
+      aiInferenceRunning = false;
+    });
+  }
 
   res.json({ ok: true, aiEnabled: aiConfig.enabled });
 });
