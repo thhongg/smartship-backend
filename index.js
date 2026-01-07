@@ -1,5 +1,8 @@
 import mqtt from "mqtt";
 import "dotenv/config";
+import fetch from "node-fetch";
+import FormData from "form-data";
+
 const IMAGE_BASE_URL =
   "https://pub-cc75337d33a94efcae6e9d7fddbfaf8a.r2.dev/latest.jpg";
 
@@ -9,6 +12,11 @@ let latestStatus = {
   detected: false,
   imageUrl: IMAGE_BASE_URL,
 };
+let aiConfig = {
+  enabled: false,
+  lastResult: null,
+};
+let aiInferenceRunning = false;
 
 const brokerUrl = process.env.MQTT_BROKER;
 
@@ -67,6 +75,13 @@ function handleObjectDetection(message) {
       latestStatus.detected = true;
 
       latestStatus.imageUrl = `${IMAGE_BASE_URL}?t=${Date.now()}`;
+
+      if (aiConfig.enabled && !aiInferenceRunning) {
+        aiInferenceRunning = true;
+        runAIInference().finally(() => {
+          aiInferenceRunning = false;
+        });
+      }
     } else {
       console.log("Object left sensor. Making decision.");
 
@@ -100,6 +115,8 @@ function handleObjectDetection(message) {
       isGoodDetected = false;
       latestStatus.detected = false;
       latestStatus.updatedAt = Date.now();
+      aiConfig.lastResult = null;
+      latestStatus.aiResult = null;
     }
   } catch (e) {
     console.error("Failed to parse object detection message:", e);
@@ -123,6 +140,50 @@ function handleWeight(message) {
   latestStatus.updatedAt = Date.now();
 }
 
+async function runAIInference() {
+  try {
+    console.log("Running AI inference...");
+
+    // 1. Fetch ảnh latest.jpg từ R2
+    const imgRes = await fetch(IMAGE_BASE_URL);
+    const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+    // 2. Build form data
+    const form = new FormData();
+    form.append(
+      "model",
+      "https://hub.ultralytics.com/models/kxpiyKC1moNO87JkbXlr"
+    );
+    form.append("imgsz", "640");
+    form.append("conf", "0.25");
+    form.append("iou", "0.45");
+    form.append("file", imgBuffer, "latest.jpg");
+
+    // 3. Call Ultralytics API
+    const res = await fetch("https://predict.ultralytics.com", {
+      method: "POST",
+      headers: {
+        "x-api-key": process.env.ULTRALYTICS_API_KEY,
+        ...form.getHeaders(),
+      },
+      body: form,
+    });
+
+    const result = await res.json();
+    if (!res.ok) {
+      throw new Error(`AI API failed: ${res.status}`);
+    }
+
+    // 4. Lưu kết quả
+    aiConfig.lastResult = result;
+    latestStatus.aiResult = result;
+
+    console.log("AI inference completed");
+  } catch (err) {
+    console.error("AI inference failed:", err);
+  }
+}
+
 export default client;
 
 import express from "express";
@@ -132,9 +193,22 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ====== HTTP API CHO FRONTEND ======
 app.get("/status", (req, res) => {
-  res.json(latestStatus);
+  res.json({
+    ...latestStatus,
+    aiEnabled: aiConfig.enabled,
+    aiResult: aiConfig.lastResult,
+  });
+});
+
+app.post("/config/ai", (req, res) => {
+  const { enabled } = req.body;
+
+  aiConfig.enabled = !!enabled;
+
+  console.log("AI mode:", aiConfig.enabled ? "ENABLED" : "DISABLED");
+
+  res.json({ ok: true, aiEnabled: aiConfig.enabled });
 });
 
 app.post("/decision", (req, res) => {
@@ -159,7 +233,6 @@ app.post("/decision", (req, res) => {
   res.json({ ok: true });
 });
 
-// ====== LISTEN PORT (QUAN TRỌNG) ======
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log("HTTP server listening on port", PORT);
